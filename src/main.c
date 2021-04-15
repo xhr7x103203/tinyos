@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "ARMCM3.h"
 #include "tinyos.h"
 
 
@@ -63,14 +64,28 @@ void delay(int count)
     while (--count > 0);
 }
 
+static void system_tick_init(u32 ms)
+{
+    SysTick->LOAD = ms * SystemCoreClock / 1000;
+    NVIC_SetPriority(SysTick_IRQn, (1 << __NVIC_PRIO_BITS) - 1);
+    SysTick->VAL = 0;
+    SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_TICKINT_Msk 
+        | SysTick_CTRL_ENABLE_Msk;
+}
+
+void SysTick_Handler(void)
+{
+    task_schedule();
+}
+
 void task1_handle(void *param)
 {
+    system_tick_init(10);
     for (;;) {
         task1_flag = 0;
         delay(100);
         task1_flag = 1;
         delay(100);
-        task_schedule();
     }
 }
 
@@ -81,7 +96,6 @@ void task2_handle(void *param)
         delay(100);
         task2_flag = 1;
         delay(100);    
-        task_schedule();
     }
 }
 

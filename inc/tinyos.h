@@ -14,6 +14,7 @@ typedef void (*task_handle_t)(void *param);
 typedef struct task_s {
     task_stack_t *stack;
     u32 stack_size;
+    u32 delay_tick;
     task_handle_t func;
     void *param;
 } task_t;

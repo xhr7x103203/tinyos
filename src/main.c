@@ -13,6 +13,10 @@ int task1_flag;
 int task2_flag;
 task_t *task_table[2];
 
+task_t task_idle;
+task_stack_t idle_stack[1024];
+
+
 void task_stack_init(task_t *task)
 {
     task_stack_t *stack;
@@ -46,16 +50,48 @@ void task_init(task_t *task, task_handle_t handle, void *param,
     task->stack_size = len;
     task->func = handle;
     task->param = param;
+    task->delay_tick = 0;
     task_stack_init(task);
 }
 
 void task_schedule(void)
 {
-    if (cur_task == task_table[0]) {
-        next_task = task_table[1];
-    } else {
-        next_task = task_table[0];
+    u32 need_schedule;
+    
+    need_schedule = 1;
+    if (cur_task == &task_idle) {
+        if (task_table[0]->delay_tick == 0) {
+            next_task = task_table[0];
+        } else if (task_table[1]->delay_tick == 0) {
+            next_task = task_table[1];
+        } else {
+            need_schedule = 0;
+        }
+    } else if (cur_task == task_table[0]){
+        if (task_table[1]->delay_tick == 0) {
+            next_task = task_table[1];
+        } else if (cur_task->delay_tick != 0) {
+            next_task = &task_idle;
+        } else {
+            need_schedule = 0;
+        }
+    } else if (cur_task == task_table[1]) {
+        if (task_table[1]->delay_tick == 0) {
+            next_task = task_table[1];
+        } else if (cur_task->delay_tick != 0) {
+            next_task = &task_idle;
+        } else {
+            need_schedule = 0;
+        }
     }
+    if (need_schedule) {
+        os_schedule();
+    }
+}
+
+void task_delay(u32 delay)
+{
+    cur_task->delay_tick = delay;
     os_schedule();
 }
 
@@ -73,9 +109,31 @@ static void system_tick_init(u32 ms)
         | SysTick_CTRL_ENABLE_Msk;
 }
 
+void task_systick_handle(void)
+{
+    int i;
+    
+    for (i = 0; i < ARRAY_SIZE(task_table); i++) {
+        if (task_table[i]->delay_tick > 0) {
+            task_table[i]->delay_tick--;
+        }
+    }
+    task_schedule();
+}
+
 void SysTick_Handler(void)
 {
-    task_schedule();
+    task_systick_handle();
+}
+
+void idle_handle(void *param)
+{
+    int idle;
+    
+    idle = 0;
+    for (;;) {
+        idle++;
+    }
 }
 
 void task1_handle(void *param)
@@ -83,9 +141,9 @@ void task1_handle(void *param)
     system_tick_init(10);
     for (;;) {
         task1_flag = 0;
-        delay(100);
+        task_delay(10);
         task1_flag = 1;
-        delay(100);
+        task_delay(10);
     }
 }
 
@@ -93,9 +151,9 @@ void task2_handle(void *param)
 {
     for (;;) {
         task2_flag = 0;
-        delay(100);
+        task_delay(10);
         task2_flag = 1;
-        delay(100);    
+        task_delay(10);    
     }
 }
 
@@ -105,6 +163,8 @@ int main()
         ARRAY_SIZE(task1_stack));
     task_init(&task2, task2_handle,(void *)0x1111, &task2_stack[1024], 
         ARRAY_SIZE(task2_stack));
+    task_init(&task_idle, idle_handle,(void *)0x1111, &idle_stack[1024], 
+        ARRAY_SIZE(idle_stack));
     task_table[0] = &task1;
     task_table[1] = &task2;
     cur_task = NULL;
